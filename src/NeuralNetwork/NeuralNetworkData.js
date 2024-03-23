@@ -85,10 +85,6 @@ class NeuralNetworkData {
         const dataAsArray = this.data.raw.map((item) => item[xsOrYs][k]);
         inputMeta[k].min = nnUtils.getMin(dataAsArray);
         inputMeta[k].max = nnUtils.getMax(dataAsArray);
-      } else if (inputMeta[k].dtype === "array") {
-        const dataAsArray = this.data.raw.map((item) => item[xsOrYs][k]).flat();
-        inputMeta[k].min = nnUtils.getMin(dataAsArray);
-        inputMeta[k].max = nnUtils.getMax(dataAsArray);
       }
     });
 
@@ -130,10 +126,8 @@ class NeuralNetworkData {
 
         const uniqueCount = uniqueValues.length;
         units += uniqueCount;
-      } else if (dtype === "array") {
-        // TODO: User must input the shape of the
-        // image size correctly.
-        units = [];
+      } else {
+        throw new Error(`Invalid data type ${dtype}. Data type must be either 'string' or 'number'`);
       }
     });
 
@@ -300,10 +294,6 @@ class NeuralNetworkData {
         normalized[k] = this.normalizeArray(dataAsArray, options);
       } else if (inputMeta[k].dtype === "number") {
         normalized[k] = this.normalizeArray(dataAsArray, options);
-      } else if (inputMeta[k].dtype === "array") {
-        normalized[k] = dataAsArray.map((item) =>
-          this.normalizeArray(item, options)
-        );
       }
     });
 

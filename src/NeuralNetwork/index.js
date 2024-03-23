@@ -1,7 +1,6 @@
 import * as tf from "@tensorflow/tfjs";
 import callCallback from "../utils/callcallback";
 import handleArguments from "../utils/handleArguments";
-import { imgToPixelArray, isInstanceOfSupportedElement, } from "../utils/imageUtilities";
 import NeuralNetwork from "./NeuralNetwork";
 import NeuralNetworkData from "./NeuralNetworkData";
 
@@ -22,12 +21,6 @@ const DEFAULTS = {
 };
 class DiyNeuralNetwork {
   constructor(options, callback) {
-
-    // Is there a better way to handle a different
-    // default learning rate for image classification tasks?
-    if (options.task === "imageClassification") {
-      DEFAULTS.learningRate = 0.02;
-    }
 
     this.options =
       {
@@ -54,8 +47,6 @@ class DiyNeuralNetwork {
     this.prepareForTraining = this.prepareForTraining.bind(this);
     this.normalizeData = this.normalizeData.bind(this);
     this.normalizeInput = this.normalizeInput.bind(this);
-    this.searchAndFormat = this.searchAndFormat.bind(this);
-    this.formatInputItem = this.formatInputItem.bind(this);
     this.convertTrainingDataToTensors =
       this.convertTrainingDataToTensors.bind(this);
     this.formatInputsForPrediction = this.formatInputsForPrediction.bind(this);
@@ -211,8 +202,7 @@ class DiyNeuralNetwork {
       throw new Error("outputLabels must be an array");
     }
 
-    const formattedInputs = this.searchAndFormat(xInputs);
-    const xs = nnUtils.formatDataAsObject(formattedInputs, inputLabels);
+    const xs = nnUtils.formatDataAsObject(xInputs, inputLabels);
 
     const ys = nnUtils.formatDataAsObject(yInputs, outputLabels);
 
@@ -313,58 +303,6 @@ class DiyNeuralNetwork {
     const key = _key;
     const { min, max } = _meta[key];
     return nnUtils.normalizeValue(value, min, max);
-  }
-
-  /**
-   * search though the xInputs and format for adding to data.raws
-   * @param {*} input
-   * @return
-   */
-  searchAndFormat(input) {
-    let formattedInputs;
-    if (Array.isArray(input)) {
-      formattedInputs = input.map((item) => this.formatInputItem(item));
-    } else if (typeof input === "object") {
-      const newXInputs = Object.assign({}, input);
-      Object.keys(input).forEach((k) => {
-        const val = input[k];
-        newXInputs[k] = this.formatInputItem(val);
-      });
-      formattedInputs = newXInputs;
-    }
-    return formattedInputs;
-  }
-
-  /**
-   * Returns either the original input or a pixelArray[]
-   * @param {*} input
-   * @return
-   */
-  // eslint-disable-next-line class-methods-use-this
-  formatInputItem(input) {
-    let imgToPredict;
-    let formattedInputs;
-    if (isInstanceOfSupportedElement(input)) {
-      imgToPredict = input;
-    } else if (
-      typeof input === "object" &&
-      isInstanceOfSupportedElement(input.elt)
-    ) {
-      imgToPredict = input.elt; // Handle p5.js image and video.
-    } else if (
-      typeof input === "object" &&
-      isInstanceOfSupportedElement(input.canvas)
-    ) {
-      imgToPredict = input.canvas; // Handle p5.js image and video.
-    }
-
-    if (imgToPredict) {
-      formattedInputs = imgToPixelArray(imgToPredict);
-    } else {
-      formattedInputs = input;
-    }
-
-    return formattedInputs;
   }
 
   /**
@@ -710,45 +648,6 @@ class DiyNeuralNetwork {
           },
         ];
         return this.createNetworkLayers(layers);
-      // if the task is imageClassification
-      case "imageclassification":
-        layers = [
-          {
-            type: "conv2d",
-            filters: 8,
-            kernelSize: 5,
-            strides: 1,
-            activation: "relu",
-            kernelInitializer: "varianceScaling",
-          },
-          {
-            type: "maxPooling2d",
-            poolSize: [2, 2],
-            strides: [2, 2],
-          },
-          {
-            type: "conv2d",
-            filters: 16,
-            kernelSize: 5,
-            strides: 1,
-            activation: "relu",
-            kernelInitializer: "varianceScaling",
-          },
-          {
-            type: "maxPooling2d",
-            poolSize: [2, 2],
-            strides: [2, 2],
-          },
-          {
-            type: "flatten",
-          },
-          {
-            type: "dense",
-            kernelInitializer: "varianceScaling",
-            activation: "softmax",
-          },
-        ];
-        return this.createNetworkLayers(layers);
 
       default:
         console.log("no imputUnits or outputUnits defined");
@@ -778,8 +677,7 @@ class DiyNeuralNetwork {
     let options = {};
 
     if (
-      this.options.task === "classification" ||
-      this.options.task === "imageClassification"
+      this.options.task === "classification"
     ) {
       options = {
         loss: "categoricalCrossentropy",
@@ -997,36 +895,8 @@ class DiyNeuralNetwork {
    */
   classifySyncInternal(_input) {
     const { meta } = this.neuralNetworkData;
-    const headers = Object.keys(meta.inputs);
 
-    let inputData;
-
-    if (this.options.task === "imageClassification") {
-      // get the inputData for classification
-      // if it is a image type format it and
-      // flatten it
-      inputData = this.searchAndFormat(_input);
-      if (Array.isArray(inputData)) {
-        inputData = inputData.flat();
-      } else {
-        inputData = inputData[headers[0]];
-      }
-
-      if (meta.isNormalized) {
-        // TODO: check to make sure this property is not static!!!!
-        const { min, max } = meta.inputs[headers[0]];
-        inputData = this.neuralNetworkData.normalizeArray(
-          Array.from(inputData),
-          { min, max }
-        );
-      } else {
-        inputData = Array.from(inputData);
-      }
-
-      inputData = tf.tensor([inputData], [1, ...meta.inputUnits]);
-    } else {
-      inputData = this.formatInputsForPredictionAll(_input);
-    }
+    let inputData = this.formatInputsForPredictionAll(_input);
 
     const unformattedResults = this.neuralNetwork.classifySync(inputData);
     inputData.dispose();
@@ -1065,36 +935,8 @@ class DiyNeuralNetwork {
    */
   async classifyInternal(_input) {
     const { meta } = this.neuralNetworkData;
-    const headers = Object.keys(meta.inputs);
 
-    let inputData;
-
-    if (this.options.task === "imageClassification") {
-      // get the inputData for classification
-      // if it is a image type format it and
-      // flatten it
-      inputData = this.searchAndFormat(_input);
-      if (Array.isArray(inputData)) {
-        inputData = inputData.flat();
-      } else {
-        inputData = inputData[headers[0]];
-      }
-
-      if (meta.isNormalized) {
-        // TODO: check to make sure this property is not static!!!!
-        const { min, max } = meta.inputs[headers[0]];
-        inputData = this.neuralNetworkData.normalizeArray(
-          Array.from(inputData),
-          { min, max }
-        );
-      } else {
-        inputData = Array.from(inputData);
-      }
-
-      inputData = tf.tensor([inputData], [1, ...meta.inputUnits]);
-    } else {
-      inputData = this.formatInputsForPredictionAll(_input);
-    }
+    let inputData = this.formatInputsForPredictionAll(_input);
 
     const unformattedResults = await this.neuralNetwork.classify(inputData);
     inputData.dispose();
